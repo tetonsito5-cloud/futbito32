@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="referrer" content="no-referrer">
+    <title>LiveSports - VIP Command Center</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script>
+        const savedTheme = localStorage.getItem('vip_theme') || 'default';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#070b14', 
+                        surface: 'rgba(17, 24, 39, 0.75)',   
+                        surfaceHover: 'rgba(31, 41, 55, 0.9)',
+                        neon: 'var(--color-neon)',      
+                        live: 'var(--color-live)',      
+                        upcoming: '#8b9bb4'   
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fira+Code:wght@500;700&display=swap');
+        
+        :root { --color-neon: #00e5ff; --color-live: #ff2a5f; }
+        [data-theme="fire"] { --color-neon: #ff4757; --color-live: #ffba00; }
+        [data-theme="gold"] { --color-neon: #ffd700; --color-live: #ff2a5f; }
+        [data-theme="emerald"] { --color-neon: #00e676; --color-live: #00e5ff; }
+        [data-theme="cyberpunk"] { --color-neon: #d926ff; --color-live: #00e5ff; }
+
+        body { 
+            background: linear-gradient(-45deg, #070b14, #0f172a, #070b14, #081221);
+            background-size: 400% 400%;
+            animation: gradientBG 20s ease infinite;
+            color: #f3f4f6; 
+            font-family: 'Inter', sans-serif;
+            height: 100vh; 
+            width: 100vw; 
+            overflow: hidden; 
+            margin: 0; 
+        }
+        @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        
+        .card-enter { opacity: 0; transform: translateY(15px); animation: slideUp 0.4s ease forwards; }
+        @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+        .alerta-gol-global { animation: flashRed 1s ease-in-out 3; }
+        @keyframes flashRed { 0%, 100% { box-shadow: inset 0 0 0px transparent; } 50% { box-shadow: inset 0 0 50px rgba(var(--color-live), 0.5); } }
+
+        @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+        .animate-marquee { display: inline-block; white-space: nowrap; animation: marquee 25s linear infinite; }
+
+        @keyframes godModeSpin { 0% { transform: perspective(1000px) rotateY(0deg) rotateX(0deg); filter: hue-rotate(0deg); } 100% { transform: perspective(1000px) rotateY(360deg) rotateX(10deg); filter: hue-rotate(360deg); } }
+        .god-mode-active { animation: godModeSpin 3s ease-in-out; }
+
+        .stat-bar { transition: width 1.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .grid-multi { display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 10px; height: 100%; width: 100%; padding: 10px;}
+        .glass { backdrop-blur: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .login-bg { background: radial-gradient(circle at center, #1e293b 0%, #070b14 100%); }
+        .highlight-row { background: rgba(255, 255, 255, 0.08); }
+
+        .pip-mode {
+            position: fixed !important;
+            bottom: 20px !important;
+            right: 20px !important;
+            width: 380px !important;
+            height: 214px !important;
+            z-index: 99999 !important;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9) !important;
+            border-radius: 16px !important;
+            border: 2px solid var(--color-neon) !important;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        @media (max-width: 1024px) {
+            .pip-mode { bottom: 80px !important; right: 10px !important; width: 240px !important; height: 135px !important; border-radius: 12px !important;}
+        }
+    </style>
+</head>
+<body id="main-body" class="flex flex-col h-screen w-screen overflow-hidden relative transition-all duration-500">
+
+    <div id="toast-container" class="fixed bottom-20 lg:bottom-8 right-4 lg:right-8 z-[9999] flex flex-col gap-4 pointer-events-none"></div>
+
+    <div id="login-screen" class="fixed inset-0 z-[20000] login-bg flex items-center justify-center p-6">
+        <div class="glass p-8 lg:p-10 rounded-[2.5rem] w-full max-w-md border border-white/10 shadow-2xl text-center relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-neon/10 to-transparent opacity-50"></div>
+            <div class="relative z-10">
+                <div class="w-16 h-16 lg:w-20 lg:h-20 bg-neon/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-neon/30 shadow-[0_0_15px_rgba(0,229,255,0.2)]">
+                    <i class="fa-solid fa-lock text-neon text-3xl lg:text-4xl"></i>
+                </div>
+                <h2 class="text-2xl lg:text-3xl font-black mb-2 tracking-tighter uppercase italic text-white">Acceso VIP</h2>
+                <p class="text-gray-400 text-xs mb-8 uppercase tracking-widest font-bold">Identificación Supabase</p>
+                
+                <div class="space-y-4 text-left">
+                    <input type="text" id="login-user" placeholder="Usuario" class="w-full bg-black/50 border border-white/10 p-4 rounded-xl focus:border-neon outline-none transition-all text-white shadow-inner">
+                    <input type="password" id="login-pass" placeholder="Contraseña" class="w-full bg-black/50 border border-white/10 p-4 rounded-xl focus:border-neon outline-none transition-all text-white shadow-inner">
+                    <button id="btn-login-submit" onclick="intentarLogin()" class="w-full bg-gradient-to-r from-neon to-blue-500 text-black font-black p-4 rounded-xl shadow-[0_0_20px_rgba(0,229,255,0.4)] hover:scale-[1.02] transition-transform uppercase tracking-widest mt-2">Ingresar</button>
+                </div>
+                <p id="login-error" class="text-live text-[10px] mt-4 font-bold hidden uppercase tracking-widest bg-live/10 py-2 rounded-lg border border-live/30">Credenciales incorrectas o caducadas</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="admin-modal" class="fixed inset-0 z-[15000] bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4 lg:p-6">
+        <div class="bg-surface border border-white/10 p-6 lg:p-8 rounded-3xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4 shrink-0">
+                <h3 class="text-xl lg:text-2xl font-black uppercase italic text-white"><i class="fa-solid fa-users-gear text-neon mr-3"></i> Panel Master Supabase</h3>
+                <button onclick="toggleAdminModal()" class="text-gray-400 hover:text-white transition-colors p-2"><i class="fa-solid fa-xmark text-2xl"></i></button>
+            </div>
+            
+            <div class="flex flex-col lg:flex-row gap-2 lg:gap-4 mb-6 shrink-0">
+                <input type="text" id="new-user-name" placeholder="Nuevo Usuario" class="flex-1 bg-black/50 border border-white/10 p-3 rounded-xl outline-none focus:border-neon text-white text-sm">
+                <input type="text" id="new-user-pass" placeholder="Contraseña" class="flex-1 bg-black/50 border border-white/10 p-3 rounded-xl outline-none focus:border-neon text-white text-sm">
+                <input type="number" id="new-user-days" placeholder="Días activo (Opcional)" class="w-full lg:w-40 bg-black/50 border border-white/10 p-3 rounded-xl outline-none focus:border-neon text-white text-sm" min="1">
+                <button onclick="crearUsuario()" class="bg-neon text-black font-bold p-3 lg:px-6 rounded-xl hover:bg-white transition-colors uppercase text-xs tracking-widest shadow-lg">Añadir</button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2" id="users-list"></div>
+
+            <div class="flex justify-between items-center mt-6 pt-4 border-t border-white/10 shrink-0">
+                <button onclick="refrescarListaUsuarios()" class="text-xs font-bold text-neon bg-neon/10 hover:bg-neon/20 px-4 py-2 rounded-lg border border-neon/30 transition-colors"><i class="fa-solid fa-rotate mr-1"></i> Actualizar Lista</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="announcement-bar" class="hidden w-full bg-live text-white text-[10px] lg:text-xs font-bold px-4 py-1 uppercase tracking-[0.2em] overflow-hidden whitespace-nowrap z-[1000]">
+        <div class="animate-marquee" id="announcement-text"></div>
+    </div>
+
+    <div id="app-content" class="hidden flex-col h-full w-full opacity-0 transition-opacity duration-700 pb-16 lg:pb-0 relative">
+        
+        <header class="bg-black/50 backdrop-blur-xl border-b border-white/10 px-4 lg:px-8 flex items-center justify-between h-16 lg:h-20 shrink-0 z-50 relative">
+            <div class="flex items-center gap-3 lg:gap-6 group cursor-pointer" onclick="mostrarDashboard()">
+                <div class="w-10 h-10 lg:w-12 lg:h-12 rounded-xl bg-gradient-to-br from-neon to-blue-600 flex items-center justify-center shadow-[0_0_15px_rgba(0,229,255,0.3)] group-hover:scale-105 transition-transform duration-300">
+                    <i class="fa-solid fa-satellite-dish text-white lg:text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg lg:text-2xl font-black tracking-tighter uppercase italic text-white leading-tight">Live<span class="text-neon">Sports</span></h1>
+                    <span id="header-username" class="hidden lg:block text-[10px] text-neon font-mono tracking-[0.2em] uppercase opacity-80">Conectado</span>
+                </div>
+            </div>
+            
+            <div class="hidden lg:flex items-center gap-4">
+                <div class="relative group">
+                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:text-neon transition-colors"></i>
+                    <input type="text" id="searchInput" onkeyup="ejecutarFiltro()" placeholder="Buscar equipo o liga..." class="bg-white/5 border border-white/10 text-sm rounded-xl pl-11 pr-4 py-2.5 focus:outline-none focus:border-neon focus:ring-1 focus:ring-neon text-white w-64 transition-all focus:bg-white/10 shadow-inner">
+                </div>
+
+                <button onclick="toggleSonido()" id="btn-sonido" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white w-11 h-11 rounded-xl transition-all flex items-center justify-center relative" title="Activar Notificaciones Push y Alertas Sonoras">
+                    <i class="fa-solid fa-bell text-neon"></i>
+                    <span class="absolute top-2 right-2 w-2 h-2 bg-live rounded-full animate-pulse" id="dot-sonido"></span>
+                </button>
+
+                <div class="relative group">
+                    <button class="bg-white/5 hover:bg-white/10 border border-white/10 text-white w-11 h-11 rounded-xl transition-all flex items-center justify-center shadow-inner">
+                        <i class="fa-solid fa-palette text-neon"></i>
+                    </button>
+                    <div class="absolute right-0 top-12 mt-2 w-36 bg-surface border border-white/10 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all flex flex-col p-2 z-50">
+                        <button onclick="setTheme('default')" class="text-left px-3 py-2 text-xs font-bold text-white hover:bg-white/10 rounded-lg flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#00e5ff]"></span> Neón</button>
+                        <button onclick="setTheme('fire')" class="text-left px-3 py-2 text-xs font-bold text-white hover:bg-white/10 rounded-lg flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#ff4757]"></span> Fuego</button>
+                        <button onclick="setTheme('gold')" class="text-left px-3 py-2 text-xs font-bold text-white hover:bg-white/10 rounded-lg flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#ffd700]"></span> Oro VIP</button>
+                        <button onclick="setTheme('emerald')" class="text-left px-3 py-2 text-xs font-bold text-white hover:bg-white/10 rounded-lg flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#00e676]"></span> Esmeralda</button>
+                        <button onclick="setTheme('cyberpunk')" class="text-left px-3 py-2 text-xs font-bold text-white hover:bg-white/10 rounded-lg flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#d926ff]"></span> Cyberpunk</button>
+                    </div>
+                </div>
+
+                <button onclick="mostrarDashboard()" class="bg-neon/10 hover:bg-neon/20 border border-neon/30 text-neon font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-lg">
+                    <i class="fa-solid fa-table-cells-large"></i> <span class="hidden xl:inline text-xs uppercase tracking-widest">Panel VIP</span>
+                </button>
+
+                <button onclick="toggleFiltroLigas()" id="btn-filtro-ligas" class="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-inner text-gray-400" title="Ver resto del mundo">
+                    <i class="fa-solid fa-earth-americas mr-1"></i> <span class="hidden xl:inline">Global</span>
+                </button>
+
+                <button onclick="toggleMulti()" id="btn-multi" class="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-inner">
+                    <i class="fa-solid fa-border-all mr-2"></i> Multi
+                </button>
+
+                <button id="admin-btn" onclick="toggleAdminModal()" class="bg-yellow-500/10 border border-yellow-500/30 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hidden text-yellow-500 hover:bg-yellow-500/20 transition-colors shadow-inner">
+                    <i class="fa-solid fa-crown mr-2"></i> Admin
+                </button>
+
+                <div class="h-8 w-px bg-white/10 mx-2"></div>
+
+                <div class="flex items-center gap-1 bg-black/40 border border-white/10 rounded-xl p-1 shadow-inner">
+                    <button onclick="cambiarOrden('hora')" id="btn-orden-hora" class="px-4 py-2 text-xs font-bold rounded-lg bg-white/10 text-neon shadow transition-all cursor-pointer"><i class="fa-solid fa-clock mr-1"></i> Hora</button>
+                    <button onclick="cambiarOrden('comp')" id="btn-orden-comp" class="px-4 py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer"><i class="fa-solid fa-trophy mr-1"></i> Ligas</button>
+                </div>
+
+                <div class="relative">
+                    <input type="date" id="datePicker" class="bg-white/5 border border-white/10 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-neon focus:ring-1 focus:ring-neon text-gray-200 transition-all cursor-pointer font-mono text-center">
+                </div>
+                
+                <button onclick="forzarActualizacion()" class="bg-white/10 hover:bg-white/20 border border-white/20 text-white w-11 h-11 rounded-xl transition-all flex items-center justify-center group shadow-inner" title="Sincronizar">
+                    <i class="fa-solid fa-rotate-right group-hover:rotate-180 transition-transform duration-500"></i>
+                </button>
+
+                <button onclick="logout()" class="text-gray-400 hover:text-live text-xl font-bold uppercase tracking-widest transition-colors ml-2" title="Cerrar Sesión"><i class="fa-solid fa-power-off"></i></button>
+            </div>
+
+            <div class="flex lg:hidden items-center gap-2">
+                <button onclick="toggleSonido()" id="btn-sonido-mobile" class="text-white w-10 h-10 rounded-xl relative flex items-center justify-center">
+                    <i class="fa-solid fa-bell text-neon"></i>
+                    <span class="absolute top-2 right-2 w-2 h-2 bg-live rounded-full animate-pulse" id="dot-sonido-mobile"></span>
+                </button>
+                <button onclick="toggleMobileMenu()" class="text-white w-10 h-10 flex items-center justify-center text-xl bg-white/5 rounded-xl border border-white/10">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+            </div>
+        </header>
+
+        <div id="mobile-menu" class="lg:hidden absolute top-16 left-0 w-full bg-surface border-b border-white/10 z-[60] flex flex-col p-4 gap-4 transform -translate-y-[150%] transition-transform duration-300 shadow-2xl backdrop-blur-xl">
+            <div class="relative w-full">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                <input type="text" id="searchInputMobile" onkeyup="syncSearchMobile()" placeholder="Buscar equipo..." class="w-full bg-black/50 border border-white/10 text-sm rounded-xl pl-11 pr-4 py-3 focus:border-neon text-white outline-none">
+            </div>
+            
+            <div class="flex items-center justify-between bg-black/30 p-3 rounded-xl border border-white/10">
+                <span class="text-xs font-bold text-gray-400 ml-1">TEMA VIP:</span>
+                <div class="flex gap-2">
+                    <button onclick="setTheme('default'); toggleMobileMenu();" class="w-6 h-6 rounded-full bg-[#00e5ff] border border-white/20"></button>
+                    <button onclick="setTheme('fire'); toggleMobileMenu();" class="w-6 h-6 rounded-full bg-[#ff4757] border border-white/20"></button>
+                    <button onclick="setTheme('gold'); toggleMobileMenu();" class="w-6 h-6 rounded-full bg-[#ffd700] border border-white/20"></button>
+                    <button onclick="setTheme('emerald'); toggleMobileMenu();" class="w-6 h-6 rounded-full bg-[#00e676] border border-white/20"></button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="toggleMulti(); toggleMobileMenu(); switchMobileTab('main');" class="bg-white/5 border border-white/10 p-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"><i class="fa-solid fa-border-all"></i> Multi</button>
+                <button onclick="toggleFiltroLigas(); toggleMobileMenu();" id="btn-filtro-ligas-mobile" class="bg-white/5 border border-white/10 p-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 text-gray-400"><i class="fa-solid fa-earth-americas"></i> Global</button>
+            </div>
+            
+            <button onclick="forzarActualizacion(); toggleMobileMenu();" class="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2"><i class="fa-solid fa-rotate-right"></i> Sincronizar</button>
+            
+            <button id="admin-btn-mobile" onclick="toggleAdminModal(); toggleMobileMenu();" class="w-full bg-yellow-500/10 border border-yellow-500/30 p-3 rounded-xl text-xs font-black uppercase tracking-widest hidden items-center justify-center gap-2 text-yellow-500"><i class="fa-solid fa-crown"></i> Admin</button>
+            
+            <button onclick="logout()" class="w-full bg-live/10 border border-live/30 p-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 text-live"><i class="fa-solid fa-power-off"></i> Salir</button>
+        </div>
+
+        <div id="main-container" class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+            
+            <aside id="sidebar-live" class="fixed lg:relative top-16 lg:top-0 bottom-16 lg:bottom-0 left-0 w-full lg:w-[380px] flex flex-col border-r border-white/10 bg-background lg:bg-black/30 backdrop-blur-md shadow-[5px_0_20px_rgba(0,0,0,0.3)] z-40 lg:z-20 shrink-0 transform -translate-x-full lg:translate-x-0 transition-transform duration-300">
+                <div class="p-4 lg:p-5 border-b border-white/5 flex items-center justify-between bg-black/40 lg:bg-transparent">
+                    <h2 class="font-black text-neon tracking-widest uppercase flex items-center gap-2 text-sm italic">
+                        <span class="relative flex h-2 w-2">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-live opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-2 w-2 bg-live"></span>
+                        </span>
+                        Objetivos en Vivo
+                    </h2>
+                    <span id="count-live" class="bg-neon/10 text-neon text-xs px-3 py-1 rounded-md font-bold font-mono border border-neon/30">0</span>
+                </div>
+                <div id="live-list" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 pb-10"></div>
+            </aside>
+
+            <main class="flex-1 flex flex-col overflow-hidden relative bg-black/20">
+                
+                <div id="dashboard-view" class="flex-1 flex flex-col p-4 lg:p-10 overflow-y-auto custom-scrollbar relative z-10">
+                    <div class="mb-8 lg:mb-12">
+                        <h2 id="dashboard-title" class="text-3xl lg:text-6xl font-black text-white uppercase tracking-tighter italic mb-2 drop-shadow-2xl">Parrilla <span class="text-neon">VIP</span></h2>
+                        <p id="dashboard-desc" class="text-gray-400 font-mono text-xs lg:text-sm tracking-widest uppercase opacity-70">Satélites activos. Selecciona un objetivo.</p>
+                    </div>
+                    
+                    <div id="dashboard-content" class="space-y-12 lg:space-y-20 pb-20"></div>
+                </div>
+
+                <div id="player-view" class="hidden flex-1 flex flex-col overflow-hidden bg-black relative z-10">
+                    
+                    <div class="h-[210px] sm:h-[300px] md:h-[450px] lg:h-[calc(100%-180px)] w-full bg-black relative group shadow-2xl">
+                        <div id="video-grid" class="w-full h-full relative">
+                            <div id="video-slot-1" class="w-full h-full relative bg-black flex items-center justify-center">
+                                <div class="flex flex-col items-center gap-4">
+                                    <i class="fa-solid fa-satellite-dish text-neon text-5xl animate-pulse"></i>
+                                    <p class="text-gray-500 font-mono text-xs uppercase tracking-widest">Sincronizando señal...</p>
+                                </div>
+                            </div>
+                            <div id="video-slot-2" class="hidden"></div>
+                            <div id="video-slot-3" class="hidden"></div>
+                            <div id="video-slot-4" class="hidden"></div>
+                        </div>
+
+                        <div class="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-50">
+                            <button onclick="toggleTeatro()" class="bg-black/60 hover:bg-neon/20 border border-white/10 text-white p-3 rounded-xl backdrop-blur-md transition-all shadow-xl" title="Modo Teatro">
+                                <i class="fa-solid fa-expand"></i>
+                            </button>
+                            <button onclick="togglePiP()" class="bg-black/60 hover:bg-neon/20 border border-white/10 text-white p-3 rounded-xl backdrop-blur-md transition-all shadow-xl" title="Ventana Flotante">
+                                <i class="fa-solid fa-compress"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 flex flex-col overflow-y-auto custom-scrollbar bg-surface/50 backdrop-blur-3xl border-t border-white/10">
+                        <div class="p-4 lg:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5">
+                            <div class="flex items-center gap-4 lg:gap-8">
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="w-12 h-12 lg:w-20 lg:h-20 bg-black/40 rounded-2xl border border-white/10 flex items-center justify-center p-2 lg:p-4 shadow-inner">
+                                        <img id="player-home-logo" src="" class="w-full h-full object-contain drop-shadow-md">
+                                    </div>
+                                    <span id="current-match-home" class="text-white font-black text-[10px] lg:text-sm uppercase tracking-wider text-center max-w-[80px] lg:max-w-[120px] truncate">Local</span>
+                                </div>
+                                
+                                <div class="flex flex-col items-center justify-center gap-1 lg:gap-2">
+                                    <div id="player-live-badge" class="bg-live/20 text-live border border-live/50 text-[9px] lg:text-[11px] font-black px-2 py-1 lg:px-3 lg:py-1 rounded flex items-center gap-1.5 lg:gap-2 tracking-widest shadow-[0_0_15px_rgba(255,42,95,0.3)]">
+                                        <span class="w-1.5 h-1.5 lg:w-2 lg:h-2 rounded-full bg-live animate-pulse"></span> LIVE
+                                    </div>
+                                    <div class="text-2xl lg:text-5xl font-black text-white font-mono tracking-tighter drop-shadow-lg" id="current-match-score">0 - 0</div>
+                                    <div id="current-match-status" class="text-[9px] lg:text-[11px] font-bold text-gray-500 uppercase tracking-[0.3em]">En Juego</div>
+                                </div>
+
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="w-12 h-12 lg:w-20 lg:h-20 bg-black/40 rounded-2xl border border-white/10 flex items-center justify-center p-2 lg:p-4 shadow-inner">
+                                        <img id="player-away-logo" src="" class="w-full h-full object-contain drop-shadow-md">
+                                    </div>
+                                    <span id="current-match-away" class="text-white font-black text-[10px] lg:text-sm uppercase tracking-wider text-center max-w-[80px] lg:max-w-[120px] truncate">Visitante</span>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-2 lg:gap-4">
+                                <button onclick="toggleTeatro()" class="flex items-center gap-2 text-gray-300 hover:text-neon transition-colors font-semibold bg-white/5 hover:bg-white/10 px-4 py-2 lg:px-5 lg:py-2.5 rounded-xl border border-white/10 shadow-lg backdrop-blur-md text-sm lg:text-base" title="Modo Cine">
+                                    <i class="fa-solid fa-expand"></i> <span class="hidden lg:inline">Teatro</span>
+                                </button>
+                                <button onclick="togglePiP()" class="flex items-center gap-2 text-gray-300 hover:text-neon transition-colors font-semibold bg-white/5 hover:bg-white/10 px-4 py-2 lg:px-5 lg:py-2.5 rounded-xl border border-white/10 shadow-lg backdrop-blur-md text-sm lg:text-base" title="Ventana Flotante">
+                                    <i class="fa-solid fa-compress"></i> <span class="hidden lg:inline">PiP</span>
+                                </button>
+                                <button onclick="toggleChat()" class="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 px-4 py-2 lg:px-5 lg:py-2.5 rounded-xl border border-emerald-500/30 shadow-lg backdrop-blur-md text-sm lg:text-base" title="Chat VIP">
+                                    <i class="fa-solid fa-comments"></i> <span class="hidden lg:inline">Chat</span>
+                                </button>
+                                <button onclick="abrirModalSalvavidas()" class="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors font-semibold bg-blue-500/10 hover:bg-blue-500/20 px-4 py-2 lg:px-5 lg:py-2.5 rounded-xl border border-blue-500/30 shadow-lg backdrop-blur-md text-sm lg:text-base" title="Cargar enlace manual">
+                                    <i class="fa-solid fa-life-ring"></i> <span class="hidden lg:inline">Manual</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="p-4 lg:p-8 space-y-8 lg:space-y-12">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
+                                <div class="bg-black/30 backdrop-blur-xl p-5 lg:p-8 rounded-2xl lg:rounded-3xl border border-white/10 shadow-xl">
+                                    <div class="flex justify-between items-center mb-6 lg:mb-8 border-b border-white/10 pb-3 lg:pb-4">
+                                        <h3 class="text-sm lg:text-xl font-black text-white uppercase tracking-widest flex items-center gap-3">
+                                            <i class="fa-solid fa-chart-simple text-neon"></i> Inteligencia de Campo
+                                        </h3>
+                                        <div id="data-sync-badge" class="text-[8px] lg:text-[10px] font-mono tracking-widest border px-2 py-1 rounded transition-colors duration-300">FETCHING ●</div>
+                                    </div>
+                                    <div class="space-y-6 lg:space-y-8" id="stats-container">
+                                        <div class="space-y-2">
+                                            <div class="flex justify-between text-[10px] lg:text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
+                                                <span id="stat-home-poss">50%</span>
+                                                <span>Posesión</span>
+                                                <span id="stat-away-poss">50%</span>
+                                            </div>
+                                            <div class="h-1.5 lg:h-2 bg-white/5 rounded-full overflow-hidden flex">
+                                                <div id="bar-home-poss" class="stat-bar h-full bg-neon shadow-[0_0_10px_rgba(var(--color-neon),0.5)]" style="width: 50%"></div>
+                                                <div id="bar-away-poss" class="stat-bar h-full bg-live shadow-[0_0_10px_rgba(var(--color-live),0.5)]" style="width: 50%"></div>
+                                            </div>
+                                        </div>
+                                        <div class="space-y-2">
+                                            <div class="flex justify-between text-[10px] lg:text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
+                                                <span id="stat-home-shots">0</span>
+                                                <span>Remates Arco</span>
+                                                <span id="stat-away-shots">0</span>
+                                            </div>
+                                            <div class="h-1.5 lg:h-2 bg-white/5 rounded-full overflow-hidden flex">
+                                                <div id="bar-home-shots" class="stat-bar h-full bg-neon shadow-[0_0_10px_rgba(var(--color-neon),0.5)]" style="width: 50%"></div>
+                                                <div id="bar-away-shots" class="stat-bar h-full bg-live shadow-[0_0_10px_rgba(var(--color-live),0.5)]" style="width: 50%"></div>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-3 gap-4 pt-4">
+                                            <div class="bg-black/40 p-3 lg:p-4 rounded-2xl border border-white/5 text-center shadow-inner">
+                                                <div class="text-[9px] lg:text-[10px] text-gray-500 font-black uppercase mb-1">Córners</div>
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <span id="stat-home-corners" class="text-neon font-mono font-bold lg:text-lg">0</span>
+                                                    <span class="text-gray-700 text-xs">/</span>
+                                                    <span id="stat-away-corners" class="text-live font-mono font-bold lg:text-lg">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="bg-black/40 p-3 lg:p-4 rounded-2xl border border-white/5 text-center shadow-inner">
+                                                <div class="text-[9px] lg:text-[10px] text-gray-500 font-black uppercase mb-1">Tarjetas</div>
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <span id="stat-home-yellows" class="text-neon font-mono font-bold lg:text-lg">0</span>
+                                                    <span class="text-gray-700 text-xs">/</span>
+                                                    <span id="stat-away-yellows" class="text-live font-mono font-bold lg:text-lg">0</span>
+                                                </div>
+                                            </div>
+                                            <div class="bg-black/40 p-3 lg:p-4 rounded-2xl border border-white/5 text-center shadow-inner">
+                                                <div class="text-[9px] lg:text-[10px] text-gray-500 font-black uppercase mb-1">Remates</div>
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <span id="stat-home-totalshots" class="text-neon font-mono font-bold lg:text-lg">0</span>
+                                                    <span class="text-gray-700 text-xs">/</span>
+                                                    <span id="stat-away-totalshots" class="text-live font-mono font-bold lg:text-lg">0</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="bg-black/30 backdrop-blur-xl p-5 lg:p-8 rounded-2xl lg:rounded-3xl border border-white/10 shadow-xl flex flex-col">
+                                    <h3 class="text-sm lg:text-xl font-black text-white mb-6 lg:mb-8 uppercase tracking-widest border-b border-white/10 pb-3 lg:pb-4 flex items-center gap-3">
+                                        <i class="fa-solid fa-trophy text-yellow-500"></i> Porra VIP <span class="text-[10px] lg:text-xs text-yellow-500/50 ml-auto font-mono">Gana Puntos</span>
+                                    </h3>
+                                    <div id="porra-container" class="flex-1 flex flex-col justify-center gap-6 lg:gap-8">
+                                        <p class="text-xs lg:text-sm text-gray-400 text-center italic">¿Cuál será el resultado final? Los aciertos suman al rango VIP.</p>
+                                        <div class="flex items-center justify-center gap-4 lg:gap-8">
+                                            <input type="number" id="porra-home" placeholder="0" class="w-16 h-16 lg:w-24 lg:h-24 bg-black/60 border-2 border-white/10 rounded-2xl lg:rounded-[2rem] text-center text-2xl lg:text-4xl font-black text-white focus:border-neon outline-none transition-all shadow-inner">
+                                            <span class="text-2xl lg:text-4xl font-black text-gray-700">-</span>
+                                            <input type="number" id="porra-away" placeholder="0" class="w-16 h-16 lg:w-24 lg:h-24 bg-black/60 border-2 border-white/10 rounded-2xl lg:rounded-[2rem] text-center text-2xl lg:text-4xl font-black text-white focus:border-neon outline-none transition-all shadow-inner">
+                                        </div>
+                                        <button onclick="guardarPorra()" class="w-full bg-gradient-to-r from-neon/20 to-blue-500/20 hover:from-neon hover:to-blue-500 text-neon hover:text-black font-black py-4 lg:py-5 rounded-2xl border border-neon/30 transition-all uppercase tracking-widest text-xs lg:text-sm shadow-lg">Registrar Predicción</button>
+                                    </div>
+                                    <div id="porra-acertada" class="hidden flex-1 flex flex-col items-center justify-center text-center p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-3xl animate-pulse">
+                                        <i class="fa-solid fa-crown text-4xl lg:text-6xl text-yellow-500 mb-4 drop-shadow-[0_0_20px_rgba(234,179,8,0.5)]"></i>
+                                        <h4 class="text-emerald-400 font-black text-xl lg:text-2xl uppercase italic">¡Resultado Acertado!</h4>
+                                        <p class="text-emerald-500/70 text-[10px] lg:text-xs font-bold mt-2 uppercase tracking-widest">+500 Créditos VIP</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="player-lineups-panel" class="bg-black/30 backdrop-blur-xl p-5 lg:p-8 rounded-2xl lg:rounded-3xl border border-white/10 shadow-xl transition-all duration-300 hidden flex-col">
+                                <h3 class="text-sm lg:text-xl font-black text-white mb-6 lg:mb-8 uppercase tracking-widest border-b border-white/10 pb-3 lg:pb-4 flex justify-between items-center">
+                                    <span><i class="fa-solid fa-users text-neon mr-3"></i> Alineaciones</span>
+                                    <span id="lineup-formation" class="text-[10px] lg:text-xs font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full"></span>
+                                </h3>
+                                <div class="grid grid-cols-2 gap-4 lg:gap-10">
+                                    <div class="space-y-4">
+                                        <h4 id="lineup-home-name" class="text-xs lg:text-sm font-black text-neon uppercase truncate border-l-2 border-neon pl-3"></h4>
+                                        <ul id="lineup-home-list" class="space-y-2 lg:space-y-3"></ul>
+                                    </div>
+                                    <div class="space-y-4">
+                                        <h4 id="lineup-away-name" class="text-xs lg:text-sm font-black text-live uppercase truncate border-l-2 border-live pl-3"></h4>
+                                        <ul id="lineup-away-list" class="space-y-2 lg:space-y-3"></ul>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="player-standings-panel" class="bg-black/30 backdrop-blur-xl p-5 lg:p-8 rounded-2xl lg:rounded-3xl border border-white/10 shadow-xl transition-all duration-300 hidden flex-col">
+                                <h3 class="text-sm lg:text-xl font-black text-white mb-4 lg:mb-6 uppercase tracking-widest border-b border-white/10 pb-2 lg:pb-3 flex justify-between items-center">
+                                    <span><i class="fa-solid fa-list-ol text-neon mr-2 lg:mr-3"></i> Clasificación Oficial</span>
+                                </h3>
+                                <div class="overflow-x-auto custom-scrollbar pb-2">
+                                    <table class="w-full text-left border-collapse whitespace-nowrap min-w-[500px]">
+                                        <thead>
+                                            <tr class="text-[10px] lg:text-xs text-gray-500 border-b border-white/10 uppercase tracking-widest">
+                                                <th class="p-2 lg:p-3 font-bold w-8 text-center">#</th>
+                                                <th class="p-2 lg:p-3 font-bold">Equipo</th>
+                                                <th class="p-2 lg:p-3 font-bold text-center">PJ</th>
+                                                <th class="p-2 lg:p-3 font-bold text-center">G</th>
+                                                <th class="p-2 lg:p-3 font-bold text-center">E</th>
+                                                <th class="p-2 lg:p-3 font-bold text-center">P</th>
+                                                <th class="p-2 lg:p-3 font-bold text-center">DG</th>
+                                                <th class="p-2 lg:p-3 font-bold text-center text-neon">PTS</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="standings-body">
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div id="player-h2h-panel" class="bg-black/30 backdrop-blur-xl p-5 lg:p-8 rounded-2xl lg:rounded-3xl border border-white/10 shadow-xl transition-all duration-300 hidden flex-col">
+                                <h3 class="text-sm lg:text-xl font-black text-white mb-4 lg:mb-6 uppercase tracking-widest border-b border-white/10 pb-2 lg:pb-3 flex justify-between items-center">
+                                    <span><i class="fa-solid fa-history text-neon mr-2 lg:mr-3"></i> Últimos 5 Partidos (H2H)</span>
+                                </h3>
+                                <div class="flex flex-col gap-3" id="h2h-list">
+                                    </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </main>
+
+            <div id="chat-panel" class="fixed top-16 lg:top-20 bottom-0 right-0 w-full lg:w-[400px] bg-black/95 backdrop-blur-3xl border-l border-white/10 z-[70] transform translate-x-full transition-transform duration-300 flex flex-col shadow-2xl">
+                <div class="p-4 border-b border-white/10 flex justify-between items-center bg-black/50 shrink-0">
+                    <h3 class="text-white font-black uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-comments text-emerald-400"></i> Chat Global</h3>
+                    <button onclick="toggleChat()" class="text-gray-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-2xl"></i></button>
+                </div>
+                <div class="flex-1 w-full bg-white/5 relative overflow-y-auto custom-scrollbar p-4" id="chat-container">
+                    </div>
+                <div class="p-4 border-t border-white/10 bg-black/50 shrink-0">
+                    <div class="flex gap-2">
+                        <input type="text" id="chat-input" placeholder="Escribe un mensaje..." class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-all shadow-inner">
+                        <button onclick="enviarMensajeChat()" class="bg-emerald-500 hover:bg-emerald-400 text-black w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-lg">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <aside id="sidebar-upcoming" class="fixed lg:relative top-16 lg:top-0 bottom-16 lg:bottom-0 left-0 w-full lg:w-[340px] flex flex-col border-l border-white/10 bg-background lg:bg-black/30 backdrop-blur-md shadow-[-5px_0_20px_rgba(0,0,0,0.3)] z-40 lg:z-20 shrink-0 transform translate-x-full lg:translate-x-0 transition-transform duration-300">
+                <div class="p-4 lg:p-5 border-b border-white/5 flex items-center justify-between bg-black/40 lg:bg-transparent">
+                    <h2 class="font-bold text-upcoming tracking-wide uppercase flex items-center gap-2 text-sm">
+                        <i class="fa-regular fa-clock"></i> Próximos / Finalizados
+                    </h2>
+                    <span id="count-upcoming" class="bg-white/5 text-upcoming text-xs px-3 py-1 rounded-md font-bold font-mono border border-white/10">0</span>
+                </div>
+                <div id="upcoming-list" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 pb-10"></div>
+            </aside>
+        </div>
+
+        <nav class="lg:hidden fixed bottom-0 left-0 w-full h-16 bg-black/90 backdrop-blur-xl border-t border-white/10 z-[100] flex justify-around items-center px-2 shadow-[0_-10px_20px_rgba(0,0,0,0.5)]">
+            <button onclick="switchMobileTab('live')" id="tab-live" class="text-gray-500 hover:text-live flex flex-col items-center justify-center w-full h-full transition-colors">
+                <i class="fa-solid fa-satellite-dish text-xl mb-1"></i><span class="text-[9px] font-black uppercase tracking-widest">En Vivo</span>
+            </button>
+            <button onclick="switchMobileTab('main')" id="tab-main" class="text-neon flex flex-col items-center justify-center w-full h-full transition-colors relative">
+                <div class="absolute -top-4 bg-black border border-white/10 w-12 h-12 rounded-full flex items-center justify-center shadow-lg">
+                    <i class="fa-solid fa-tv text-xl text-neon"></i>
+                </div>
+                <span class="text-[9px] font-black uppercase tracking-widest mt-6">Parrilla</span>
+            </button>
+            <button onclick="switchMobileTab('upcoming')" id="tab-upcoming" class="text-gray-500 hover:text-upcoming flex flex-col items-center justify-center w-full h-full transition-colors">
+                <i class="fa-regular fa-clock text-xl mb-1"></i><span class="text-[9px] font-black uppercase tracking-widest">Próximos</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <!-- Modal Salvavidas -->
+    <div id="modal-salvavidas" class="fixed inset-0 z-[25000] bg-black/90 backdrop-blur-md hidden items-center justify-center p-6">
+        <div class="bg-surface border border-white/10 p-8 rounded-[2rem] w-full max-w-lg shadow-2xl relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-50"></div>
+            <div class="relative z-10">
+                <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                    <h3 class="text-xl font-black uppercase italic text-white flex items-center gap-3"><i class="fa-solid fa-life-ring text-blue-400"></i> Señal Manual</h3>
+                    <button onclick="abrirModalSalvavidas()" class="text-gray-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark text-2xl"></i></button>
+                </div>
+                <p class="text-gray-400 text-xs mb-6 uppercase tracking-widest font-bold leading-relaxed">Pega el enlace directo (.m3u8), un enlace de página o un código IFRAME completo para forzar la señal.</p>
+                <textarea id="input-salvavidas" placeholder="https://ejemplo.com/señal.m3u8" class="w-full bg-black/50 border border-white/10 p-4 rounded-xl focus:border-blue-500 outline-none transition-all text-white shadow-inner mb-6 font-mono text-xs h-32"></textarea>
+                <button onclick="ejecutarSalvavidas()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black p-4 rounded-xl shadow-lg transition-all uppercase tracking-widest text-sm">Inyectar Señal</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = 'd15dda60d79d7d0fae0dd0283efa80da'; 
+        const BASE_URL = 'https://api.sportsrc.org/v2/';
+        const API_KEY_STATS = '3c579b2003acaf856bae9b2920b12edf';
+        
+        const URL_ANUNCIOS = ""; 
+        
+        let apiFootballFixturesCache = {}; 
+        
+        const FALLBACK_LOGO = "https://ui-avatars.com/api/?name=Eq&background=111827&color=00e5ff&bold=true";
+        const FALLBACK_LEAGUE = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Trophy_icon.svg/512px-Trophy_icon.svg.png";
+
+        let isFirstLoad = true;
+        let marcadoresConocidos = {}; 
+        let globalLiveMatches = [];
+        let globalUpcomingMatches = [];
+        let modoOrdenacion = 'hora'; 
+        let sonidoActivado = false; 
+        
+        let multiMode = false;
+        let activeSlots = 1;
+        let authRole = 'user'; 
+        let currentLoadedMatchId = null;
+        let modoFiltroLigas = 'vip';
+
+        // Configuración de Supabase
+        const SUPABASE_URL = 'https://zvkqejmxkqzlxaohosyz.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_4BlQH7U8LxHHGmEUh3Gleg_6Vz_Unoc';
+        let supabaseClient = null;
+        if (window.supabase) {
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        }
+
+        window.onload = async () => {
+            if(URL_ANUNCIOS) {
+                try {
+                    let res = await fetch(URL_ANUNCIOS);
+                    let txt = await res.text();
+                    if(txt && txt.trim().length > 0) {
+                        document.getElementById('announcement-bar').classList.remove('hidden');
+                        document.getElementById('announcement-text').innerText = "🔥 " + txt.trim() + " 🔥";
+                    }
+                }catch(e){}
+            }
+        };
+
+        let secretKeys = "";
+        document.addEventListener('keydown', (e) => {
+            if(e.key && typeof e.key === 'string') {
+                secretKeys += e.key.toLowerCase();
+                if(secretKeys.length > 20) secretKeys = secretKeys.slice(-20);
+                if(secretKeys.includes("hacker")) {
+                document.body.classList.add('god-mode-active');
+                setTheme('emerald');
+                confetti({ particleCount: 500, spread: 180, colors: ['#00e676', '#000000'] });
+                secretKeys = "";
+                setTimeout(() => document.body.classList.remove('god-mode-active'), 3000);
+                
+                const toast = document.createElement('div');
+                toast.className = "fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black text-emerald-400 border-2 border-emerald-500 font-mono p-8 rounded-lg z-[99999] shadow-[0_0_50px_#00e676] text-center text-xl uppercase tracking-[0.3em]";
+                toast.innerHTML = "ACCESO MODO DIOS CONCEDIDO<br><span class='text-xs text-white mt-2 block'>Matrix Desbloqueada</span>";
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+                }
+            }
+        });
+
+        function guardarPorra() {
+            if(!currentLoadedMatchId) return;
+            const h = document.getElementById('porra-home').value;
+            const a = document.getElementById('porra-away').value;
+            if(h === '' || a === '') return;
+            
+            localStorage.setItem(`porra_${currentLoadedMatchId}`, `${h}-${a}`);
+            
+            const btn = document.querySelector('#porra-container button');
+            btn.innerText = "¡GUARDADO!";
+            btn.classList.add('bg-emerald-500/20', 'text-emerald-500', 'border-emerald-500/50');
+            setTimeout(() => {
+                btn.innerText = "ACTUALIZAR";
+                btn.classList.remove('bg-emerald-500/20', 'text-emerald-500', 'border-emerald-500/50');
+            }, 2000);
+            
+            comprobarPorra();
+        }
+
+        function comprobarPorra() {
+            if(!currentLoadedMatchId) return;
+            const saved = localStorage.getItem(`porra_${currentLoadedMatchId}`);
+            const realScore = document.getElementById('current-match-score').innerText.trim();
+            const status = document.getElementById('current-match-status').innerText.trim();
+            
+            const porraContainer = document.getElementById('porra-container');
+            const porraAcertada = document.getElementById('porra-acertada');
+            
+            if(saved) {
+                const parts = saved.split('-');
+                document.getElementById('porra-home').value = parts[0];
+                document.getElementById('porra-away').value = parts[1];
+            } else {
+                document.getElementById('porra-home').value = '';
+                document.getElementById('porra-away').value = '';
+            }
+            
+            porraAcertada.classList.add('hidden');
+            porraContainer.classList.remove('hidden');
+
+            if(status === "PARTIDO TERMINADO" || status.includes("FINAL")) {
+                if(saved && saved === realScore) {
+                    porraContainer.classList.add('hidden');
+                    porraAcertada.classList.remove('hidden');
+                    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                }
+            }
+        }
+
+        function setTheme(themeName) {
+            document.documentElement.setAttribute('data-theme', themeName);
+            localStorage.setItem('vip_theme', themeName);
+        }
+
+        let favoriteTeams = JSON.parse(localStorage.getItem('vip_fav_teams') || '[]');
+
+        function isFav(home, away) {
+            return favoriteTeams.includes(home) || favoriteTeams.includes(away);
+        }
+
+        function toggleFav(teamName, event) {
+            event.stopPropagation(); 
+            if(favoriteTeams.includes(teamName)) {
+                favoriteTeams = favoriteTeams.filter(t => t !== teamName);
+            } else {
+                favoriteTeams.push(teamName);
+            }
+            localStorage.setItem('vip_fav_teams', JSON.stringify(favoriteTeams));
+            ejecutarFiltro(); 
+        }
+
+        const ADMIN_ROOT = { user: 'AdminMaster', passHash: 'MTIzNA==', role: 'admin' };
+
+        async function intentarLogin() {
+            const u = document.getElementById('login-user').value.trim();
+            const p = document.getElementById('login-pass').value.trim();
+            const errorMsg = document.getElementById('login-error');
+
+            if (!u || !p) return;
+            
+            // Login de Admin Maestro
+            if (u === ADMIN_ROOT.user && btoa(p) === ADMIN_ROOT.passHash) {
+                acceder({ username: ADMIN_ROOT.user, role: ADMIN_ROOT.role });
+                return;
+            }
+
+            // Login con Supabase - tabla profiles
+            try {
+                const { data, error } = await supabaseClient
+                    .from('profiles')
+                    .select('*')
+                    .eq('username', u)
+                    .eq('password', p)
+                    .single();
+
+                if (error || !data) {
+                    errorMsg.innerText = "Credenciales incorrectas";
+                    errorMsg.classList.remove('hidden');
+                    setTimeout(() => errorMsg.classList.add('hidden'), 3000);
+                    return;
+                }
+
+                if (data.expires_at && new Date(data.expires_at) < new Date()) {
+                    errorMsg.innerText = "Cuenta caducada. Contacta al Admin.";
+                    errorMsg.classList.remove('hidden');
+                    setTimeout(() => errorMsg.classList.add('hidden'), 3000);
+                    return;
+                }
+
+                acceder(data);
+            } catch (e) {
+                console.error(e);
+                errorMsg.innerText = "Error de conexión con Supabase";
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        function acceder(user) {
+            document.getElementById('login-screen').classList.add('hidden');
+            const app = document.getElementById('app-content');
+            app.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+            app.classList.add('flex');
+            
+            const headerUsername = document.getElementById('header-username');
+            if(headerUsername) headerUsername.innerText = `ID: ${user.username}`;
+            authRole = user.role;
+
+            if (user.role === 'admin') {
+                document.getElementById('admin-btn').classList.remove('hidden');
+                document.getElementById('admin-btn-mobile').classList.remove('hidden');
+                document.getElementById('admin-btn-mobile').classList.add('flex');
+            }
+
+            const datePicker = document.getElementById('datePicker');
+            const datePickerMobile = document.getElementById('datePickerMobile');
+            if(datePicker) datePicker.valueAsDate = new Date();
+            if(datePickerMobile) datePickerMobile.valueAsDate = new Date();
+            
+            if(window.innerWidth < 1024) switchMobileTab('main');
+            
+            currentChatUser = user.username;
+            inicializarSupabaseChat();
+            
+            loadMatches(false);
+            setInterval(() => loadMatches(true), 60000);
+        }
+
+        function logout() { location.reload(); }
+
+        function toggleAdminModal() {
+            if(authRole !== 'admin') return;
+            const m = document.getElementById('admin-modal');
+            m.classList.toggle('hidden');
+            if (!m.classList.contains('hidden')) refrescarListaUsuarios();
+        }
+
+        async function crearUsuario() {
+            const u = document.getElementById('new-user-name').value.trim();
+            const p = document.getElementById('new-user-pass').value.trim();
+            const days = parseInt(document.getElementById('new-user-days').value);
+            
+            if (!u || !p) return;
+            
+            let expiresAt = null;
+            if (!isNaN(days) && days > 0) {
+                const date = new Date();
+                date.setDate(date.getDate() + days);
+                expiresAt = date.toISOString();
+            }
+            
+            try {
+                const { error } = await supabaseClient
+                    .from('profiles')
+                    .insert([{ username: u, password: p, role: 'user', expires_at: expiresAt }]);
+
+                if (error) {
+                    if (error.code === '23505') alert("El usuario ya existe.");
+                    else alert("Error al crear usuario.");
+                    return;
+                }
+                
+                showToast('Usuario creado exitosamente');
+                document.getElementById('new-user-name').value = ''; 
+                document.getElementById('new-user-pass').value = ''; 
+                document.getElementById('new-user-days').value = '';
+                refrescarListaUsuarios();
+            } catch (e) {
+                console.error(e);
+                alert('Error al crear usuario: ' + e.message);
+            }
+        }
+
+        async function borrarUsuario(id) {
+            if(!confirm(`¿Eliminar este acceso?`)) return;
+            try {
+                const { error } = await supabaseClient
+                    .from('profiles')
+                    .delete()
+                    .eq('id', id);
+
+                if (error) throw error;
+                showToast('Usuario eliminado');
+                refrescarListaUsuarios();
+            } catch (e) {
+                console.error(e);
+                alert('Error al eliminar usuario');
+            }
+        }
+
+        async function refrescarListaUsuarios() {
+            const list = document.getElementById('users-list');
+            try {
+                const { data, error } = await supabaseClient
+                    .from('profiles')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                if(data.length === 0) { 
+                    list.innerHTML = '<p class="text-gray-500 text-center text-sm p-4">No hay usuarios estándar</p>'; 
+                    return; 
+                }
+
+                list.innerHTML = data.map((u) => {
+                    let expText = "Sin límite", expColor = "text-emerald-500 border-emerald-500/30 bg-emerald-500/10";
+                    if (u.expires_at) {
+                        if (new Date(u.expires_at) < new Date()) { 
+                            expText = "Caducada"; 
+                            expColor = "text-live border-live/30 bg-live/10"; 
+                        } else { 
+                            expText = `Hasta ${new Date(u.expires_at).toLocaleDateString()}`; 
+                            expColor = "text-yellow-500 border-yellow-500/30 bg-yellow-500/10"; 
+                        }
+                    }
+                    return `
+                    <div class="flex flex-col lg:flex-row justify-between lg:items-center bg-black/40 p-4 rounded-xl border border-white/5 mb-2 gap-3 lg:gap-0">
+                        <div class="flex flex-col">
+                            <span class="text-white font-bold text-sm">${u.username}</span>
+                            <span class="text-gray-400 text-[10px] font-mono mt-1">Pass: ${u.password || 'N/A'}</span>
+                        </div>
+                        <div class="flex items-center justify-between lg:justify-end w-full lg:w-auto gap-4">
+                            <span class="text-[10px] font-mono uppercase border px-2 py-1 rounded ${expColor}">${expText}</span>
+                            <button onclick="borrarUsuario(${u.id})" class="text-gray-500 hover:text-live transition-colors" title="Eliminar"><i class="fa-solid fa-trash-can text-lg"></i></button>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                console.error(e);
+                list.innerHTML = '<p class="text-live text-center text-sm p-4">Error al cargar usuarios</p>';
+            }
+        }
+
+        let mobileMenuOpen = false;
+        function toggleMobileMenu() { 
+            mobileMenuOpen = !mobileMenuOpen; 
+            document.getElementById('mobile-menu').classList.toggle('-translate-y-[150%]', !mobileMenuOpen); 
+        }
+
+        function switchMobileTab(tab) {
+            if(window.innerWidth >= 1024) return; 
+            const sideLive = document.getElementById('sidebar-live'), sideUpcoming = document.getElementById('sidebar-upcoming');
+            const btnLive = document.getElementById('tab-live'), btnMain = document.getElementById('tab-main'), btnUpc = document.getElementById('tab-upcoming');
+            
+            btnLive.classList.remove('text-live'); btnLive.classList.add('text-gray-500'); 
+            btnMain.querySelector('.fa-tv').classList.remove('text-neon'); btnMain.querySelector('.fa-tv').classList.add('text-gray-500'); 
+            btnMain.querySelector('span').classList.remove('text-neon'); btnMain.querySelector('span').classList.add('text-gray-500'); 
+            btnUpc.classList.remove('text-upcoming'); btnUpc.classList.add('text-gray-500');
+
+            if (tab === 'live') { 
+                sideLive.classList.remove('-translate-x-full'); 
+                sideUpcoming.classList.add('translate-x-full'); 
+                btnLive.classList.add('text-live'); 
+                btnLive.classList.remove('text-gray-500'); 
+            } else if (tab === 'upcoming') { 
+                sideLive.classList.add('-translate-x-full'); 
+                sideUpcoming.classList.remove('translate-x-full'); 
+                btnUpc.classList.add('text-upcoming'); 
+                btnUpc.classList.remove('text-gray-500'); 
+            } else { 
+                sideLive.classList.add('-translate-x-full'); 
+                sideUpcoming.classList.add('translate-x-full'); 
+                btnMain.querySelector('.fa-tv').classList.add('text-neon'); 
+                btnMain.querySelector('.fa-tv').classList.remove('text-gray-500'); 
+                btnMain.querySelector('span').classList.add('text-neon'); 
+                btnMain.querySelector('span').classList.remove('text-gray-500'); 
+            }
+        }
+
+        function syncSearchMobile() { document.getElementById('searchInput').value = document.getElementById('searchInputMobile').value; ejecutarFiltro(); }
+        
+        function toggleFiltroLigas() {
+            modoFiltroLigas = modoFiltroLigas === 'vip' ? 'otras' : 'vip';
+            const btnDesk = document.getElementById('btn-filtro-ligas'), btnMob = document.getElementById('btn-filtro-ligas-mobile');
+            if (modoFiltroLigas === 'otras') {
+                if(btnDesk) { btnDesk.classList.add('bg-neon', 'text-black'); btnDesk.classList.remove('bg-white/5', 'text-gray-400'); }
+                if(btnMob) { btnMob.classList.add('bg-neon', 'text-black'); btnMob.classList.remove('bg-white/5', 'text-gray-400'); }
+                document.getElementById('dashboard-title').innerText = 'Resto del Mundo';
+                document.getElementById('dashboard-desc').innerText = 'Ligas secundarias y otras competiciones de todo el planeta.';
+            } else {
+                if(btnDesk) { btnDesk.classList.remove('bg-neon', 'text-black'); btnDesk.classList.add('bg-white/5', 'text-gray-400'); }
+                if(btnMob) { btnMob.classList.remove('bg-neon', 'text-black'); btnMob.classList.add('bg-white/5', 'text-gray-400'); }
+                document.getElementById('dashboard-title').innerText = 'Parrilla VIP';
+                document.getElementById('dashboard-desc').innerText = 'Satélites activos. Selecciona un objetivo.';
+            }
+            ejecutarFiltro();
+        }
+
+        function obtenerHora(match) {
+            try {
+                if (match.timestamp) {
+                    const ts = String(match.timestamp).length <= 10 ? match.timestamp * 1000 : match.timestamp;
+                    const d = new Date(ts);
+                    if (!isNaN(d.getTime())) return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                }
+                if (match.date && match.date.includes('T')) {
+                    const d = new Date(match.date);
+                    if (!isNaN(d.getTime())) return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                }
+                return match.time || '--:--';
+            } catch(e) {}
+            return '--:--';
+        }
+
+        const logosLigas = {
+            "la liga": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png", "laliga": "https://a.espncdn.com/i/leaguelogos/soccer/500/15.png",
+            "premier": "https://a.espncdn.com/i/leaguelogos/soccer/500/23.png", "bundesliga": "https://a.espncdn.com/i/leaguelogos/soccer/500/80.png",
+            "serie a": "https://a.espncdn.com/i/leaguelogos/soccer/500/12.png", "champions": "https://a.espncdn.com/i/leaguelogos/soccer/500/2.png",
+            "europa": "https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png", "ligue 1": "https://a.espncdn.com/i/leaguelogos/soccer/500/9.png",
+            "primera a": "https://a.espncdn.com/i/leaguelogos/soccer/500/2035.png", "colombia": "https://a.espncdn.com/i/leaguelogos/soccer/500/2035.png"
+        };
+
+        function obtenerEscudoFinal(nombreEquipo, escudoApi) {
+            if (!nombreEquipo) return FALLBACK_LOGO;
+            const n = String(nombreEquipo).toLowerCase();
+            if(n.includes('real madrid')) return "https://a.espncdn.com/i/teamlogos/soccer/500/86.png";
+            if(n.includes('barcelona')) return "https://a.espncdn.com/i/teamlogos/soccer/500/83.png";
+            if(n.includes('atletico') || n.includes('atlético')) return "https://a.espncdn.com/i/teamlogos/soccer/500/1068.png";
+            if(n.includes('manchester city')) return "https://a.espncdn.com/i/teamlogos/soccer/500/382.png";
+            if(n.includes('liverpool')) return "https://a.espncdn.com/i/teamlogos/soccer/500/364.png";
+            if (escudoApi && typeof escudoApi === 'string' && escudoApi.length > 10) return escudoApi;
+            return `https://ui-avatars.com/api/?name=${n.charAt(0)}&background=111827&color=00e5ff`;
+        }
+
+        function obtenerLogoLiga(nombreLiga) {
+            if (nombreLiga) {
+                const n = String(nombreLiga).toLowerCase();
+                for (const [clave, url] of Object.entries(logosLigas)) {
+                    if (n.includes(clave)) return url;
+                }
+            }
+            return FALLBACK_LEAGUE;
+        }
+
+        function agruparPorLiga(partidos) {
+            return partidos.reduce((g, p) => {
+                const l = p.league_name || 'Otras Competiciones';
+                if (!g[l]) g[l] = [];
+                g[l].push(p);
+                return g;
+            }, {});
+        }
+
+        function createMatchCard(match, isLive, index) {
+            const id = match.id || match.match_id || match._id;
+            const home = match.teams?.home?.name || 'Local';
+            const away = match.teams?.away?.name || 'Visitante';
+            const leagueName = match.league_name || 'VIP';
+            const isFinished = match.isFinishedCustom;
+            
+            const card = document.createElement('div');
+            card.style.animationDelay = `${index * 0.05}s`;
+            
+            const isFavMatch = isFav(home, away);
+            const favIconColor = isFavMatch ? 'text-yellow-400' : 'text-white/20 hover:text-white/50';
+            const favIconType = isFavMatch ? 'fa-solid' : 'fa-regular';
+
+            if (isLive) {
+                card.className = "card-enter bg-black/40 hover:bg-white/10 border border-white/5 hover:border-neon/50 rounded-2xl p-4 cursor-pointer transition-all duration-300 group shadow-lg backdrop-blur-md relative";
+                card.onclick = () => loadMatchDetail(id); 
+                card.innerHTML = `
+                    <button onclick="toggleFav('${home.replace(/'/g, "\\'")}', event)" class="absolute top-3 left-3 z-20 text-lg transition-colors"><i class="${favIconType} fa-star ${favIconColor}"></i></button>
+                    <div class="flex justify-between items-center text-[10px] text-gray-400 mb-3 pb-2 border-b border-white/10 pl-6">
+                        <div class="flex items-center gap-1.5 min-w-0">
+                            <img src="${obtenerLogoLiga(leagueName)}" class="w-4 h-4 object-contain shrink-0">
+                            <span class="truncate font-black uppercase tracking-widest text-gray-300">${leagueName}</span>
+                        </div>
+                        <span class="text-live font-black tracking-widest shrink-0 shadow-neon drop-shadow-md animate-pulse">${match.status_detail || 'EN JUEGO'}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div class="space-y-3 flex-1 min-w-0 pr-3">
+                            <div class="flex items-center gap-3">
+                                <img src="${obtenerEscudoFinal(home)}" onerror="this.onerror=null; this.src='${FALLBACK_LOGO}';" class="w-6 h-6 object-contain drop-shadow-md">
+                                <span class="text-white text-[13px] font-bold truncate group-hover:text-neon transition-colors">${home}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <img src="${obtenerEscudoFinal(away)}" onerror="this.onerror=null; this.src='${FALLBACK_LOGO}';" class="w-6 h-6 object-contain drop-shadow-md">
+                                <span class="text-white text-[13px] font-bold truncate group-hover:text-neon transition-colors">${away}</span>
+                            </div>
+                        </div>
+                        <div class="bg-black/60 px-3 py-2 rounded-lg border border-white/10 shrink-0 shadow-inner">
+                            <span class="text-xl font-black text-white tracking-widest font-mono">${match.score?.display || '0-0'}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                card.className = "card-enter bg-black/20 border border-white/5 rounded-2xl p-4 opacity-80 shadow-md backdrop-blur-md relative";
+                let timeOrScoreHTML = isFinished 
+                    ? `<span class="text-white font-black font-mono tracking-widest bg-black/40 px-2 py-1 rounded">${match.score?.display || '0-0'}</span>` 
+                    : `<span class="text-upcoming font-bold bg-white/5 px-2 py-0.5 rounded"><i class="fa-regular fa-clock"></i> ${obtenerHora(match)}</span>`;
+
+                if(isFinished) {
+                    card.onclick = () => loadMatchDetail(id);
+                    card.classList.add('cursor-pointer', 'hover:bg-white/5');
+                }
+
+                card.innerHTML = `
+                    <button onclick="toggleFav('${home.replace(/'/g, "\\'")}', event)" class="absolute top-3 left-3 z-20 text-lg transition-colors"><i class="${favIconType} fa-star ${favIconColor}"></i></button>
+                    <div class="flex justify-between items-center text-[10px] text-gray-500 mb-3 pb-2 border-b border-white/5 pl-6">
+                        <div class="flex items-center gap-1.5 min-w-0">
+                            <img src="${obtenerLogoLiga(leagueName)}" class="w-4 h-4 object-contain grayscale opacity-60 shrink-0">
+                            <span class="truncate font-bold uppercase tracking-widest">${leagueName}</span>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            ${isFinished ? `<span class="text-gray-500 text-[9px] uppercase tracking-widest mb-1">FINALIZADO</span>` : ''}
+                            ${timeOrScoreHTML}
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3">
+                            <img src="${obtenerEscudoFinal(home)}" onerror="this.onerror=null; this.src='${FALLBACK_LOGO}';" class="w-6 h-6 object-contain grayscale opacity-70">
+                            <span class="text-gray-400 text-[13px] font-semibold truncate">${home}</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <img src="${obtenerEscudoFinal(away)}" onerror="this.onerror=null; this.src='${FALLBACK_LOGO}';" class="w-6 h-6 object-contain grayscale opacity-70">
+                            <span class="text-gray-400 text-[13px] font-semibold truncate">${away}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            return card;
+        }
+
+        function renderLiveMatches(matches, listContainer) {
+            document.getElementById('count-live').innerText = matches.length;
+            listContainer.innerHTML = '';
+            if (matches.length === 0) { listContainer.innerHTML = `<div class="text-center py-10 bg-white/5 rounded-xl mt-4 border border-white/5"><p class="text-xs text-gray-400 font-mono">SIN OBJETIVOS</p></div>`; return; }
+            matches.forEach((m, i) => listContainer.appendChild(createMatchCard(m, true, i)));
+        }
+
+        function renderUpcomingMatches(matches, listContainer) {
+            document.getElementById('count-upcoming').innerText = matches.length;
+            listContainer.innerHTML = '';
+            if (matches.length === 0) { listContainer.innerHTML = `<div class="text-center py-10 bg-white/5 rounded-xl mt-4 border border-white/5"><p class="text-xs text-gray-400 font-mono">SIN PROGRAMACIÓN</p></div>`; return; }
+            matches.forEach((m, i) => listContainer.appendChild(createMatchCard(m, false, i)));
+        }
+
+        function renderDashboardGigante(todosLosPartidos) {
+            const container = document.getElementById('dashboard-content');
+            container.innerHTML = '';
+            if (todosLosPartidos.length === 0) {
+                container.innerHTML = '<div class="text-gray-400 text-center py-32 text-xl border border-white/5 bg-black/40 backdrop-blur-xl rounded-3xl font-mono uppercase tracking-widest">Sin programacion activa en esta categoría</div>';
+                return;
+            }
+
+            let delayIndex = 0;
+            for (const [liga, partidos] of Object.entries(agruparPorLiga(todosLosPartidos))) {
+                const header = document.createElement('div');
+                header.className = "flex items-center gap-3 lg:gap-4 mt-8 lg:mt-12 mb-6 lg:mb-8 pb-4 border-b border-white/10 card-enter";
+                header.style.animationDelay = `${delayIndex++ * 0.05}s`;
+                header.innerHTML = `
+                    <div class="w-10 h-10 lg:w-14 lg:h-14 bg-white/10 rounded-xl lg:rounded-2xl flex items-center justify-center p-2 shadow-lg backdrop-blur-md border border-white/20"><img src="${obtenerLogoLiga(liga)}" class="w-full h-full object-contain"></div>
+                    <h2 class="text-xl lg:text-3xl font-black text-white uppercase tracking-widest drop-shadow-md">${liga}</h2>
+                    <span class="bg-black/60 text-neon font-mono text-[10px] lg:text-xs font-bold px-3 py-1.5 lg:px-4 lg:py-2 rounded-xl border border-neon/30 ml-auto shadow-inner">${partidos.length}</span>
+                `;
+                container.appendChild(header);
+                
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8";
+                
+                partidos.forEach(match => {
+                    const isLive = String(match.status || '').toLowerCase() === 'inprogress' || String(match.status_detail || '').toLowerCase().includes('juego');
+                    const isFinished = match.isFinishedCustom;
+                    const home = match.teams?.home?.name;
+                    const away = match.teams?.away?.name;
+                    
+                    const card = document.createElement('div');
+                    card.className = `card-enter bg-black/40 backdrop-blur-xl border border-white/10 rounded-[1.5rem] lg:rounded-[2rem] p-5 lg:p-8 transition-all duration-500 group relative overflow-hidden ${isLive || isFinished ? 'cursor-pointer hover:-translate-y-2 hover:shadow-[0_20px_40px_rgba(var(--color-neon),0.2)] hover:bg-white/5 hover:border-neon/50' : 'opacity-80'}`;
+                    card.style.animationDelay = `${delayIndex++ * 0.05}s`;
+                    if (isLive || isFinished) card.onclick = () => loadMatchDetail(match.id || match.match_id);
+
+                    let statusBadge;
+                    if(isLive) {
+                        statusBadge = `<span class="bg-live/20 text-live border border-live/50 px-3 py-1 lg:px-4 lg:py-1.5 rounded-lg text-[10px] lg:text-xs font-black tracking-widest animate-pulse flex items-center gap-2 shadow-[0_0_10px_rgba(255,42,95,0.4)]"><span class="w-2 h-2 rounded-full bg-live"></span> ${match.status_detail || 'EN JUEGO'}</span>`;
+                    } else if(isFinished) {
+                        statusBadge = `<span class="bg-gray-800 text-gray-300 border border-gray-600 px-3 py-1 lg:px-4 lg:py-1.5 rounded-lg text-[10px] lg:text-xs font-bold tracking-widest">FINALIZADO</span>`;
+                    } else {
+                        statusBadge = `<span class="bg-white/5 text-gray-400 border border-white/10 px-3 py-1 lg:px-4 lg:py-1.5 rounded-lg text-[10px] lg:text-xs font-bold uppercase tracking-widest">${match.status_detail || 'Próximo'}</span>`;
+                    }
+
+                    let timeOrScore = isLive || isFinished 
+                        ? `<span class="text-3xl lg:text-4xl font-black text-white font-mono tracking-widest">${match.score?.display || '0-0'}</span>`
+                        : `<span class="text-lg lg:text-xl font-bold text-upcoming"><i class="fa-regular fa-clock"></i> ${obtenerHora(match)}</span>`;
+
+                    card.innerHTML = `
+                        <div class="absolute inset-0 bg-gradient-to-br from-neon/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
+                        <div class="relative z-10">
+                            <div class="flex justify-between items-center mb-6 lg:mb-8">
+                                ${statusBadge}
+                                <i class="fa-solid fa-play text-white/20 text-xl lg:text-2xl ${isLive || isFinished ? 'group-hover:text-neon' : 'hidden'} transition-colors"></i>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 lg:gap-4">
+                                <div class="flex flex-col items-center gap-3 w-2/5 text-center relative">
+                                    <div class="w-16 h-16 lg:w-24 lg:h-24 rounded-full bg-black/60 flex items-center justify-center border border-white/10 shadow-[0_10px_20px_rgba(0,0,0,0.5)] p-3 lg:p-4 ${isLive || isFinished ? 'group-hover:scale-110 group-hover:border-neon/50' : ''} transition-all duration-500">
+                                        <img src="${obtenerEscudoFinal(home)}" onerror="this.onerror=null; this.src='${FALLBACK_LOGO}';" class="w-full h-full object-contain ${!isLive && !isFinished ? 'grayscale' : ''}">
+                                    </div>
+                                    <span class="text-white font-black text-[11px] lg:text-base uppercase tracking-wider line-clamp-2 drop-shadow-md">${home}</span>
+                                </div>
+                                <div class="flex flex-col items-center justify-center w-1/5 shrink-0 z-10 bg-black/40 py-3 px-4 lg:py-4 lg:px-6 rounded-2xl border border-white/5 shadow-inner backdrop-blur-md">
+                                    ${timeOrScore}
+                                </div>
+                                <div class="flex flex-col items-center gap-3 w-2/5 text-center relative">
+                                    <div class="w-16 h-16 lg:w-24 lg:h-24 rounded-full bg-black/60 flex items-center justify-center border border-white/10 shadow-[0_10px_20px_rgba(0,0,0,0.5)] p-3 lg:p-4 ${isLive || isFinished ? 'group-hover:scale-110 group-hover:border-neon/50' : ''} transition-all duration-500">
+                                        <img src="${obtenerEscudoFinal(away)}" onerror="this.onerror=null; this.src='${FALLBACK_LOGO}';" class="w-full h-full object-contain ${!isLive && !isFinished ? 'grayscale' : ''}">
+                                    </div>
+                                    <span class="text-white font-black text-[11px] lg:text-base uppercase tracking-wider line-clamp-2 drop-shadow-md">${away}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+                container.appendChild(grid);
+            }
+        }
+
+        async function fetchConRespaldo(url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("Fallo API directa");
+                return await response.json();
+            } catch (e) {
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                const responseProxy = await fetch(proxyUrl);
+                return await responseProxy.json();
+            }
+        }
+
+        function ejecutarFiltro() {
+            const texto = (document.getElementById('searchInput').value || document.getElementById('searchInputMobile').value).toLowerCase();
+            
+            let filtradosVivo = globalLiveMatches.filter(m => 
+                (modoFiltroLigas === 'vip' ? m.isVIP : !m.isVIP) &&
+                ((m.teams?.home?.name || '').toLowerCase().includes(texto) ||
+                (m.teams?.away?.name || '').toLowerCase().includes(texto) ||
+                (m.league_name || '').toLowerCase().includes(texto))
+            );
+            
+            let filtradosProx = globalUpcomingMatches.filter(m => 
+                (modoFiltroLigas === 'vip' ? m.isVIP : !m.isVIP) &&
+                ((m.teams?.home?.name || '').toLowerCase().includes(texto) ||
+                (m.teams?.away?.name || '').toLowerCase().includes(texto) ||
+                (m.league_name || '').toLowerCase().includes(texto))
+            );
+
+            renderLiveMatches(filtradosVivo, document.getElementById('live-list'));
+            renderUpcomingMatches(filtradosProx, document.getElementById('upcoming-list'));
+            if (!document.getElementById('dashboard-view').classList.contains('hidden')) {
+                renderDashboardGigante([...filtradosVivo, ...filtradosProx]);
+            }
+        }
+
+        async function loadMatches(esSilencioso = false) {
+            const liveList = document.getElementById('live-list');
+            const upcomingList = document.getElementById('upcoming-list');
+            const date = document.getElementById('datePicker').value || document.getElementById('datePickerMobile').value;
+            
+            if (!esSilencioso) {
+                liveList.innerHTML = `<div class="flex flex-col items-center justify-center py-12 opacity-50"><i class="fa-solid fa-satellite-dish fa-spin text-3xl text-neon mb-4"></i><p class="text-sm font-mono tracking-widest">Sincronizando</p></div>`;
+                upcomingList.innerHTML = `<div class="flex flex-col items-center justify-center py-12 opacity-50"><i class="fa-solid fa-satellite-dish fa-spin text-3xl text-neon mb-4"></i><p class="text-sm font-mono tracking-widest">Sincronizando</p></div>`;
+            }
+
+            try {
+                const data = await fetchConRespaldo(`${BASE_URL}?type=matches&sport=football&date=${date}&api_key=${API_KEY}`);
+                if (!data || data.success === false) throw new Error();
+
+                let allMatches = [];
+                const ligasTop = ["la liga", "laliga", "premier", "bundesliga", "serie a", "champions", "europa", "ligue 1", "primera a", "colombia"];
+
+                (data.data || []).forEach(leagueItem => {
+                    const nombreLiga = leagueItem.league?.name?.toLowerCase() || '';
+                    const esVIP = ligasTop.some(p => nombreLiga.includes(p));
+                    if (leagueItem.matches) {
+                        leagueItem.matches.forEach(m => {
+                            m.league_name = leagueItem.league.name;
+                            m.isVIP = esVIP; 
+                            allMatches.push(m);
+                        });
+                    }
+                });
+
+                globalLiveMatches = [];
+                globalUpcomingMatches = [];
+
+                allMatches.forEach(match => {
+                    const status = String(match.status || '').toLowerCase();
+                    if (status === 'inprogress' || status === 'live') {
+                        globalLiveMatches.push(match);
+                    } else {
+                        if (status.includes('finished')) match.isFinishedCustom = true;
+                        globalUpcomingMatches.push(match);
+                    }
+                });
+
+                isFirstLoad = false;
+                ejecutarFiltro(); 
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function loadMatchDetail(matchId) {
+            if (!matchId) return;
+            currentLoadedMatchId = matchId;
+
+            document.getElementById('dashboard-view').classList.add('hidden');
+            const playerView = document.getElementById('player-view');
+            playerView.classList.remove('hidden');
+            playerView.classList.add('flex'); 
+            
+            if(window.innerWidth < 1024) switchMobileTab('main');
+
+            const matchMemory = [...globalLiveMatches, ...globalUpcomingMatches].find(m => (m.id || m.match_id) == matchId) || {};
+            
+            document.getElementById('current-match-home').innerText = matchMemory.teams?.home?.name || "Local";
+            document.getElementById('current-match-away').innerText = matchMemory.teams?.away?.name || "Visitante";
+            document.getElementById('current-match-score').innerText = matchMemory.score?.display || "0-0";
+            
+            document.getElementById('player-home-logo').src = obtenerEscudoFinal(matchMemory.teams?.home?.name);
+            document.getElementById('player-away-logo').src = obtenerEscudoFinal(matchMemory.teams?.away?.name);
+
+            const slot1 = document.getElementById('video-slot-1');
+            slot1.innerHTML = `<div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80"><i class="fa-solid fa-satellite-dish text-5xl animate-pulse text-neon"></i></div>`;
+
+            try {
+                const data = await fetchConRespaldo(`${BASE_URL}?type=detail&id=${matchId}&api_key=${API_KEY}`);
+                let streamUrl = data.data?.sources?.[0]?.embedUrl;
+                if (streamUrl) {
+                    slot1.innerHTML = `<iframe src="${streamUrl}" class="absolute inset-0 w-full h-full rounded-2xl" frameborder="0" scrolling="no" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe>`;
+                } else {
+                    slot1.innerHTML = `<div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80"><p class="text-gray-500 uppercase font-black">Sin Señal Disponible</p></div>`;
+                }
+            } catch (e) {
+                slot1.innerHTML = `<div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80"><p class="text-live uppercase font-black">Error de Conexión</p></div>`;
+            }
+        }
+
+        function mostrarDashboard() {
+            document.getElementById('player-view').classList.add('hidden');
+            document.getElementById('dashboard-view').classList.remove('hidden');
+            ejecutarFiltro();
+        }
+
+        function toggleChat() {
+            document.getElementById('chat-panel').classList.toggle('translate-x-full');
+        }
+
+        function toggleMulti() {
+            multiMode = !multiMode;
+            const btn = document.getElementById('btn-multi');
+            btn.classList.toggle('bg-neon', multiMode);
+            btn.classList.toggle('text-black', multiMode);
+            showToast(multiMode ? 'Multivista Activada' : 'Multivista Desactivada');
+        }
+
+        function toggleSonido() {
+            sonidoActivado = !sonidoActivado;
+            const btn = document.getElementById('btn-sonido');
+            const dot = document.getElementById('dot-sonido');
+            btn.classList.toggle('bg-neon/20', sonidoActivado);
+            dot.classList.toggle('bg-emerald-500', sonidoActivado);
+            dot.classList.toggle('bg-live', !sonidoActivado);
+            showToast(sonidoActivado ? 'Alertas Activadas' : 'Alertas Desactivadas');
+            if (sonidoActivado && 'Notification' in window) Notification.requestPermission();
+        }
+
+        function toggleTeatro() {
+            document.getElementById('sidebar-live').classList.toggle('hidden');
+            document.getElementById('sidebar-upcoming').classList.toggle('hidden');
+        }
+
+        function togglePiP() {
+            const slot = document.getElementById('video-slot-1');
+            slot.classList.toggle('pip-mode');
+        }
+
+        function abrirModalSalvavidas() {
+            const m = document.getElementById('modal-salvavidas');
+            m.classList.toggle('hidden');
+            m.classList.toggle('flex');
+        }
+
+        function ejecutarSalvavidas() {
+            const val = document.getElementById('input-salvavidas').value.trim();
+            if(!val) return;
+            const slot = document.getElementById('video-slot-1');
+            if(val.includes('<iframe')) slot.innerHTML = val;
+            else slot.innerHTML = `<iframe src="${val}" class="absolute inset-0 w-full h-full rounded-2xl" frameborder="0" scrolling="no" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe>`;
+            abrirModalSalvavidas();
+        }
+
+        function forzarActualizacion() {
+            loadMatches(false);
+            showToast('Sincronizando datos...');
+        }
+
+        function cambiarOrden(modo) {
+            modoOrdenacion = modo;
+            document.getElementById('btn-orden-hora').classList.toggle('bg-white/10', modo === 'hora');
+            document.getElementById('btn-orden-hora').classList.toggle('text-neon', modo === 'hora');
+            document.getElementById('btn-orden-comp').classList.toggle('bg-white/10', modo === 'comp');
+            document.getElementById('btn-orden-comp').classList.toggle('text-neon', modo === 'comp');
+            ejecutarFiltro();
+        }
+
+        // --- CHAT SUPABASE ---
+        let currentChatUser = 'Anónimo';
+        let chatSubscription = null;
+
+        async function inicializarSupabaseChat() {
+            const { data, error } = await supabaseClient.from('chat_messages').select('*').order('created_at', { ascending: true }).limit(50);
+            if (!error) renderMensajesChat(data);
+            
+            if (chatSubscription) chatSubscription.unsubscribe();
+            chatSubscription = supabaseClient.channel('chat').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, payload => {
+                loadChatMessages();
+            }).subscribe();
+        }
+
+        async function loadChatMessages() {
+            const { data } = await supabaseClient.from('chat_messages').select('*').order('created_at', { ascending: true }).limit(50);
+            renderMensajesChat(data);
+        }
+
+        function renderMensajesChat(messages) {
+            const container = document.getElementById('chat-container');
+            container.innerHTML = (messages || []).map(msg => `
+                <div class="mb-3 ${msg.username === currentChatUser ? 'text-right' : ''}">
+                    <div class="inline-block p-2 rounded-lg ${msg.username === currentChatUser ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/5 text-gray-300'} border border-white/10 max-w-[80%]">
+                        <div class="text-[9px] font-bold text-gray-500 mb-1">${msg.username}</div>
+                        <div class="text-xs break-words">${msg.text}</div>
+                    </div>
+                </div>
+            `).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function enviarMensajeChat() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if(!text) return;
+            const { error } = await supabaseClient.from('chat_messages').insert([{ username: currentChatUser, text }]);
+            if(!error) input.value = '';
+        }
+
+        function showToast(msg) {
+            const container = document.getElementById('toast-container');
+            const t = document.createElement('div');
+            t.className = "bg-black/90 border border-neon/50 text-neon px-5 py-3 rounded-xl font-bold shadow-2xl transition-all duration-300 opacity-0";
+            t.innerText = msg;
+            container.appendChild(t);
+            setTimeout(() => t.classList.remove('opacity-0'), 10);
+            setTimeout(() => { t.classList.add('opacity-0'); setTimeout(() => t.remove(), 300); }, 3000);
+        }
+    </script>
+</body>
+</html>
