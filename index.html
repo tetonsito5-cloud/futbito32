@@ -685,8 +685,6 @@
             ejecutarFiltro(); 
         }
 
-        const ADMIN_ROOT = { user: 'AdminMaster', passHash: 'MTIzNA==', role: 'admin' };
-
         async function intentarLogin() {
             const u = document.getElementById('login-user').value.trim();
             const p = document.getElementById('login-pass').value.trim();
@@ -694,12 +692,6 @@
 
             if (!u || !p) return;
             
-            // Login de Admin Maestro
-            if (u === ADMIN_ROOT.user && btoa(p) === ADMIN_ROOT.passHash) {
-                acceder({ username: ADMIN_ROOT.user, role: ADMIN_ROOT.role });
-                return;
-            }
-
             // Login con Supabase - tabla profiles
             try {
                 const { data, error } = await supabaseClient
