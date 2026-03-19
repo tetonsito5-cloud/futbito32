@@ -985,7 +985,7 @@
 
             if (isLive) {
                 card.className = "card-enter bg-black/40 hover:bg-white/10 border border-white/5 hover:border-neon/50 rounded-2xl p-4 cursor-pointer transition-all duration-300 group shadow-lg backdrop-blur-md relative";
-                card.onclick = () => loadMatchDetail(id); 
+                card.onclick = () => multiMode ? cargarPartidoEnMulti(id) : loadMatchDetail(id); 
                 card.innerHTML = `
                     <button onclick="toggleFav('${home.replace(/'/g, "\\'")}', event)" class="absolute top-3 left-3 z-20 text-lg transition-colors"><i class="${favIconType} fa-star ${favIconColor}"></i></button>
                     <div class="flex justify-between items-center text-[10px] text-gray-400 mb-3 pb-2 border-b border-white/10 pl-6">
@@ -1273,7 +1273,8 @@
             document.getElementById('chat-panel').classList.toggle('translate-x-full');
         }
 
-        let multiSlots = [null, null, null, null]; // Almacena los IDs de partidos en cada slot
+        let multiSlots = [null, null, null, null];
+        let multiPartidosActivos = {};
         
         function toggleMulti() {
             multiMode = !multiMode;
@@ -1281,60 +1282,48 @@
             const videoGrid = document.getElementById('video-grid');
             
             if(multiMode) {
-                // Activar multivista 2x2
                 btn.classList.add('bg-neon', 'text-black');
-                videoGrid.classList.add('grid-multi');
-                
-                // Mostrar los 4 slots
-                for(let i = 1; i <= 4; i++) {
-                    const slot = document.getElementById(`video-slot-${i}`);
-                    slot.classList.remove('hidden');
-                    slot.style.cursor = 'pointer';
-                    slot.onclick = () => cargarPartidoEnSlot(i);
-                }
-                
-                showToast('Multivista 2x2 Activada - Haz clic en cada cuadro para cargar un partido');
+                showToast('Multivista Activada - Haz clic en un partido para cargarlo');
             } else {
-                // Desactivar multivista
                 btn.classList.remove('bg-neon', 'text-black');
                 videoGrid.classList.remove('grid-multi');
-                
-                // Ocultar slots 2, 3, 4
-                for(let i = 2; i <= 4; i++) {
+                videoGrid.style.display = '';
+                for(let i = 1; i <= 4; i++) {
                     document.getElementById(`video-slot-${i}`).classList.add('hidden');
                 }
-                
                 multiSlots = [null, null, null, null];
+                multiPartidosActivos = {};
                 showToast('Multivista Desactivada');
             }
         }
         
-        async function cargarPartidoEnSlot(slotNum) {
+        async function cargarPartidoEnMulti(matchId) {
             if(!multiMode) return;
             
-            // Mostrar lista de partidos en vivo para seleccionar
-            if(globalLiveMatches.length === 0) {
-                showToast('No hay partidos en vivo disponibles');
+            if(multiPartidosActivos[matchId]) {
+                showToast('Este partido ya esta cargado');
                 return;
             }
             
-            // Crear un selector simple
-            let matchList = globalLiveMatches.map((m, i) => `${i+1}. ${m.teams?.home?.name || 'Local'} vs ${m.teams?.away?.name || 'Visitante'}`).join('\n');
-            let selection = prompt(`Selecciona un partido (1-${globalLiveMatches.length}):\n\n${matchList}`, '1');
+            let slotNum = -1;
+            for(let i = 0; i < 4; i++) {
+                if(multiSlots[i] === null) {
+                    slotNum = i + 1;
+                    break;
+                }
+            }
             
-            if(!selection) return;
-            let idx = parseInt(selection) - 1;
-            if(idx < 0 || idx >= globalLiveMatches.length) {
-                showToast('Selección inválida');
+            if(slotNum === -1) {
+                showToast('Todos los slots estan ocupados');
                 return;
             }
             
-            const match = globalLiveMatches[idx];
-            const matchId = match.id || match.match_id;
             multiSlots[slotNum - 1] = matchId;
+            multiPartidosActivos[matchId] = slotNum;
+            ajustarLayoutMulti();
             
-            // Cargar el partido en el slot
             const slot = document.getElementById(`video-slot-${slotNum}`);
+            slot.classList.remove('hidden');
             slot.innerHTML = `<div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80"><i class="fa-solid fa-satellite-dish text-3xl animate-pulse text-neon"></i></div>`;
             
             try {
@@ -1343,13 +1332,34 @@
                 if (streamUrl) {
                     slot.innerHTML = `<iframe src="${streamUrl}" class="absolute inset-0 w-full h-full" frameborder="0" scrolling="no" allow="autoplay; fullscreen; encrypted-media" allowfullscreen></iframe>`;
                 } else {
-                    slot.innerHTML = `<div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80"><p class="text-gray-500 text-xs uppercase font-black">Sin Señal</p></div>`;
+                    slot.innerHTML = `<div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80"><p class="text-gray-500 text-xs uppercase font-black">Sin Senal</p></div>`;
                 }
             } catch (e) {
                 slot.innerHTML = `<div class="absolute inset-0 flex flex-col items-center justify-center bg-black/80"><p class="text-live text-xs uppercase font-black">Error</p></div>`;
             }
             
             showToast(`Partido cargado en slot ${slotNum}`);
+        }
+        
+        function ajustarLayoutMulti() {
+            const videoGrid = document.getElementById('video-grid');
+            const count = Object.keys(multiPartidosActivos).length;
+            
+            if(count === 0) {
+                videoGrid.classList.remove('grid-multi');
+                videoGrid.style.display = '';
+            } else if(count === 1) {
+                videoGrid.classList.remove('grid-multi');
+                videoGrid.style.display = '';
+            } else if(count === 2) {
+                videoGrid.classList.remove('grid-multi');
+                videoGrid.style.display = 'grid';
+                videoGrid.style.gridTemplateColumns = '1fr 1fr';
+                videoGrid.style.gridTemplateRows = '1fr';
+            } else {
+                videoGrid.classList.add('grid-multi');
+                videoGrid.style.display = 'grid';
+            }
         }
 
         function toggleSonido() {
@@ -1469,13 +1479,19 @@
                 
                 if(comando === '/clear') {
                     try {
-                        await supabaseClient.from('chat_messages').delete().neq('id', 0);
-                        showToast('Chat limpiado por administrador');
-                        loadChatMessages();
+                        const { data: allMessages } = await supabaseClient.from('chat_messages').select('id');
+                        if(allMessages && allMessages.length > 0) {
+                            for(let msg of allMessages) {
+                                await supabaseClient.from('chat_messages').delete().eq('id', msg.id);
+                            }
+                        }
+                        showToast('Chat limpiado');
+                        await loadChatMessages();
                         input.value = '';
                         return;
                     } catch(e) {
-                        showToast('Error al limpiar chat');
+                        console.error(e);
+                        showToast('Error al limpiar');
                     }
                 }
                 else if(comando === '/alert') {
@@ -1486,8 +1502,17 @@
                 }
                 else if(comando === '/kick') {
                     if(!args) { showToast('Uso: /kick [usuario]'); return; }
-                    const { error } = await supabaseClient.from('chat_messages').insert([{ username: '⛔ SISTEMA', text: args + ' ha sido expulsado' }]);
-                    if(!error) { showToast(args + ' expulsado'); input.value = ''; }
+                    try {
+                        const { error: insertError } = await supabaseClient.from('chat_messages').insert([{ username: '⛔ SISTEMA', text: 'El usuario ' + args + ' ha sido expulsado del servidor' }]);
+                        if(!insertError) {
+                            showToast(args + ' ha sido expulsado');
+                            await loadChatMessages();
+                            input.value = '';
+                        }
+                    } catch(e) {
+                        console.error(e);
+                        showToast('Error al expulsar usuario');
+                    }
                     return;
                 }
                 else if(comando === '/help') {
@@ -1625,3 +1650,4 @@
     </script>
 </body>
 </html>
+Error Occurring After Uploading index.html File - Manus
